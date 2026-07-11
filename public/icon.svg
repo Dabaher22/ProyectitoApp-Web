@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Fondo naranja con esquinas redondeadas estilo iOS -->
+  <rect width="512" height="512" rx="112" ry="112" fill="#FF6B35"/>
+  <!-- Rayo centrado en (256,256). Puntos del ícono Zap de lucide centrados en origen, escala 15 -->
+  <!-- Puntos originales (24x24): 13,2 3,14 12,14 11,22 21,10 12,10 → centro (12,12) → restamos (12,12) y escalamos ×15 -->
+  <polygon
+    points="271,106 121,286 256,286 241,406 391,226 256,226"
+    fill="#1A1A1A"
+    stroke="#1A1A1A"
+    stroke-width="6"
+    stroke-linejoin="round"
+    stroke-linecap="round"
+  />
+</svg>
