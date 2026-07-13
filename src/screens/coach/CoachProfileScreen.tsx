@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Link2, LogOut, Dumbbell, Copy, ShieldCheck, Users, Bell, BellOff } from 'lucide-react';
+import { Link2, LogOut, Dumbbell, Copy, ShieldCheck, Users, Bell, BellOff, Megaphone } from 'lucide-react';
 import ScreenHeader from '../../components/ScreenHeader';
 import { Colors, Fonts, Radius, Spacing } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
@@ -15,6 +15,7 @@ export default function CoachProfileScreen() {
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [pushPermission, setPushPermission] = useState<NotificationPermission>('default');
   const [enablingPush, setEnablingPush] = useState(false);
 
@@ -49,6 +50,15 @@ export default function CoachProfileScreen() {
     await navigator.clipboard.writeText(inviteCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const inviteLink = inviteCode ? `${window.location.origin}/login?invite=${inviteCode}` : null;
+
+  const handleCopyLink = async () => {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   };
 
   const handleSwitchMode = () => {
@@ -99,6 +109,30 @@ export default function CoachProfileScreen() {
                   <Copy color={Colors.blackText} size={16} />
                   <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 13, color: Colors.blackText }}>{copied ? '¡COPIADO!' : 'COPIAR CÓDIGO'}</span>
                 </button>
+
+                <div style={{ height: 1, backgroundColor: Colors.bgElevated }} />
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.teal, letterSpacing: 0.5 }}>ENLACE URL DIRECTA</span>
+                  <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, lineHeight: 1.5 }}>
+                    Mándale este link a tu asesorado: al iniciar sesión o registrarse, queda conectado con vos automáticamente, sin escribir el código.
+                  </span>
+                  <div style={{
+                    fontFamily: Fonts.mono, fontSize: 11, color: Colors.white, backgroundColor: Colors.bgElevated,
+                    borderRadius: Radius.sm, padding: '10px 12px', overflow: 'hidden', textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap', border: `1px solid ${Colors.teal}30`,
+                  }}>
+                    {inviteLink}
+                  </div>
+                  <button onClick={handleCopyLink} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs,
+                    backgroundColor: Colors.teal, borderRadius: Radius.md, height: 48, border: 'none', cursor: 'pointer',
+                  }}>
+                    <Link2 color={Colors.blackText} size={16} />
+                    <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 13, color: Colors.blackText }}>{linkCopied ? '¡COPIADO!' : 'COPIAR ENLACE'}</span>
+                  </button>
+                </div>
+
                 <button onClick={handleGenerateCode} style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'center' }}>
                   <span style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.orange }}>Generar otro código</span>
                 </button>
@@ -157,6 +191,17 @@ export default function CoachProfileScreen() {
               <div>
                 <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 15, color: Colors.white }}>Coaches Pendientes</div>
                 <div style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, marginTop: 2 }}>Aprobar solicitudes de coaches nuevos</div>
+              </div>
+            </button>
+            <button onClick={() => navigate('/admin/announcements')} style={{
+              display: 'flex', alignItems: 'center', backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.md, gap: Spacing.md, border: `1px solid ${Colors.orange}30`, cursor: 'pointer', textAlign: 'left',
+            }}>
+              <div style={{ width: 44, height: 44, backgroundColor: Colors.orange + '20', borderRadius: Radius.md, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Megaphone color={Colors.orange} size={20} />
+              </div>
+              <div>
+                <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 15, color: Colors.white }}>Anuncios del Sistema</div>
+                <div style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, marginTop: 2 }}>Publicar cards de anuncio, primero para Admins</div>
               </div>
             </button>
           </div>

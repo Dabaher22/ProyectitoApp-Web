@@ -10,6 +10,7 @@ import { getSessionsByTrainee, WorkoutSession, formatSessionDate, sessionToMs, t
 import { getFriendships, getFriendName, getFriendId } from '../../services/friends';
 import { getCircuitsByTrainee, Circuit } from '../../services/circuits';
 import { useAuthStore } from '../../store/authStore';
+import AnnouncementOverlay from '../../components/announcements/AnnouncementOverlay';
 
 function getRoutineDays(routine: Routine): string[] {
   const seen = new Set<string>();
@@ -83,6 +84,7 @@ export default function TraineeDashboardScreen() {
 
   return (
     <div style={{ padding: Spacing.lg, display: 'flex', flexDirection: 'column', gap: Spacing.lg }}>
+      <AnnouncementOverlay />
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>

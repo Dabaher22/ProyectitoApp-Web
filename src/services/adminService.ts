@@ -19,3 +19,8 @@ export async function getPendingCoaches(): Promise<PendingCoach[]> {
 export async function approveCoach(uid: string): Promise<void> {
   await updateDoc(doc(db, 'users', uid), { role: 'coach' });
 }
+
+export async function getAdminUids(): Promise<string[]> {
+  const snap = await getDocs(query(collection(db, 'users'), where('isAdmin', '==', true)));
+  return snap.docs.map((d) => d.id);
+}

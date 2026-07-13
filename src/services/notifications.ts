@@ -1,5 +1,5 @@
 import {
-  collection, doc, addDoc, getDocs, getDoc, setDoc, query,
+  collection, doc, addDoc, getDocs, getDoc, setDoc, updateDoc, deleteDoc, query,
   where, orderBy, serverTimestamp, Timestamp,
 } from 'firebase/firestore';
 import { getToken } from 'firebase/messaging';
@@ -17,6 +17,10 @@ export interface AppNotification {
   recipientIds: string[];
   toType: 'specific' | 'all_trainees' | 'all_coaches' | 'all';
   createdAt: any;
+  /** When set, this notification also triggers a fullscreen interactive card (see cardKey). */
+  presentation?: 'card';
+  /** Key into the announcement card registry — identifies which bespoke card component to render. */
+  cardKey?: string;
 }
 
 // ── FCM token ────────────────────────────────────────────────────────────────
@@ -105,4 +109,40 @@ export async function getFcmTokensForUsers(uids: string[]): Promise<string[]> {
     } catch {}
   }));
   return tokens;
+}
+
+// ── Card announcements ───────────────────────────────────────────────────────
+// Fullscreen interactive cards (see src/components/announcements). Each shows
+// once per user, then stays reachable from the notifications list.
+//
+// "Seen" is tracked by cardKey (not by the notification doc id) so it survives
+// the underlying notification being deleted and republished — a user who already
+// saw a given card never sees it pop up again just because it got relaunched.
+
+export async function hasSeenAnnouncement(uid: string, cardKey: string): Promise<boolean> {
+  const snap = await getDoc(doc(db, 'announcementSeen', `${uid}_${cardKey}`));
+  return snap.exists();
+}
+
+export async function markAnnouncementSeen(uid: string, cardKey: string): Promise<void> {
+  await setDoc(doc(db, 'announcementSeen', `${uid}_${cardKey}`), { seenAt: serverTimestamp() });
+}
+
+export async function getNotificationByCardKey(cardKey: string): Promise<AppNotification | null> {
+  const snap = await getDocs(query(collection(db, 'notifications'), where('cardKey', '==', cardKey)));
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AppNotification));
+  if (docs.length === 0) return null;
+  docs.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
+  return docs[0];
+}
+
+export async function publishAnnouncement(
+  notificationId: string,
+  audience: 'all' | 'all_coaches' | 'all_trainees'
+): Promise<void> {
+  await updateDoc(doc(db, 'notifications', notificationId), { toType: audience, recipientIds: [] });
+}
+
+export async function deleteNotification(notificationId: string): Promise<void> {
+  await deleteDoc(doc(db, 'notifications', notificationId));
 }

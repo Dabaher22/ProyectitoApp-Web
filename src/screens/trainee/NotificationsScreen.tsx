@@ -5,7 +5,8 @@ import ScreenHeader from '../../components/ScreenHeader';
 import Spinner from '../../components/Spinner';
 import { Colors, Fonts, Radius, Spacing } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
-import { getNotificationsForUser, markAllRead, getLastReadAt, AppNotification } from '../../services/notifications';
+import { getNotificationsForUser, markAllRead, getLastReadAt, markAnnouncementSeen, AppNotification } from '../../services/notifications';
+import { getAnnouncementCard } from '../../components/announcements/registry';
 
 type Tab = 'todo' | 'coach' | 'sistema';
 
@@ -30,6 +31,7 @@ export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [lastReadAt, setLastReadAt] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [openCard, setOpenCard] = useState<AppNotification | null>(null);
 
   useEffect(() => {
     if (!uid) return;
@@ -128,14 +130,19 @@ export default function NotificationsScreen() {
         ) : (
           filtered.map((n) => {
             const unread = isUnread(n);
+            const CardComponent = getAnnouncementCard(n);
             return (
-              <div key={n.id} style={{
-                backgroundColor: unread ? Colors.bgCard : Colors.bgPage,
-                borderRadius: Radius.lg, padding: Spacing.md,
-                display: 'flex', flexDirection: 'column', gap: Spacing.xs,
-                borderLeft: `3px solid ${unread ? Colors.orange : Colors.bgElevated}`,
-                opacity: unread ? 1 : 0.55,
-              }}>
+              <div
+                key={n.id}
+                onClick={CardComponent ? () => setOpenCard(n) : undefined}
+                style={{
+                  backgroundColor: unread ? Colors.bgCard : Colors.bgPage,
+                  borderRadius: Radius.lg, padding: Spacing.md,
+                  display: 'flex', flexDirection: 'column', gap: Spacing.xs,
+                  borderLeft: `3px solid ${unread ? Colors.orange : Colors.bgElevated}`,
+                  opacity: unread ? 1 : 0.55,
+                  cursor: CardComponent ? 'pointer' : 'default',
+                }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     {unread && (
@@ -150,11 +157,24 @@ export default function NotificationsScreen() {
                 <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 15, color: unread ? Colors.white : Colors.gray }}>{n.title}</div>
                 <div style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.gray, lineHeight: 1.6 }}>{n.body}</div>
                 <div style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, marginTop: 2 }}>De: {n.fromName}</div>
+                {CardComponent && (
+                  <div style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 10, color: Colors.orange, marginTop: 4, letterSpacing: 0.5 }}>TOCA PARA VER →</div>
+                )}
               </div>
             );
           })
         )}
       </div>
+
+      {openCard && (() => {
+        const CardComponent = getAnnouncementCard(openCard);
+        if (!CardComponent) return null;
+        const handleClose = () => {
+          if (uid) markAnnouncementSeen(uid, openCard.cardKey!);
+          setOpenCard(null);
+        };
+        return <CardComponent onClose={handleClose} />;
+      })()}
     </div>
   );
 }

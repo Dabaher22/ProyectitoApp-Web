@@ -8,6 +8,11 @@ export interface CircuitExercise {
   name: string;
   reps: number;
   muscle?: string;
+  gifUrl?: string;
+  supersetGroupId?: string;
+  // Cardio entries use type: 'cardio' and durationMinutes; reps is ignored for them.
+  type?: 'exercise' | 'cardio';
+  durationMinutes?: number;
 }
 
 export interface Circuit {

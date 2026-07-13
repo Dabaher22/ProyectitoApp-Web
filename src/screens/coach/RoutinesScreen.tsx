@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ClipboardList, Plus, Trash2, Pencil, PlayCircle, X, Repeat, Zap, Users } from 'lucide-react';
+import { ClipboardList, Plus, Trash2, Pencil, PlayCircle, X, Repeat, Zap, Users, CalendarRange } from 'lucide-react';
 import ScreenHeader from '../../components/ScreenHeader';
 import Spinner from '../../components/Spinner';
 import { Colors, Fonts, Radius, Spacing } from '../../theme';
@@ -12,7 +12,7 @@ import type { DayConfig, ExerciseEntry } from './ExerciseSelectionScreen';
 
 const CIRCUIT_COLOR = '#B980FF';
 
-type Tab = 'routines' | 'circuits';
+type Tab = 'routines' | 'circuits' | 'plan';
 
 function buildDayConfigsFromRoutine(r: Routine): DayConfig[] {
   const dayMap = new Map<string, ExerciseEntry[]>();
@@ -74,8 +74,13 @@ export default function RoutinesScreen() {
 
   const switchTab = (t: Tab) => {
     setTab(t);
-    navigate(t === 'routines' ? '/coach/routines' : '/coach/circuits', { replace: true });
+    if (t === 'routines') navigate('/coach/routines', { replace: true });
+    else if (t === 'circuits') navigate('/coach/circuits', { replace: true });
   };
+
+  // Las rutinas creadas desde el Plan (periodización) quedan aparte de las rutinas sueltas.
+  const standaloneRoutines = routines.filter((r) => !r.macrocycleId);
+  const planRoutines = routines.filter((r) => !!r.macrocycleId);
 
   const discardDraft = () => {
     if (uid) clearRoutineDraft(uid);
@@ -150,7 +155,7 @@ export default function RoutinesScreen() {
   return (
     <div>
       <ScreenHeader
-        title={tab === 'routines' ? 'MIS RUTINAS' : 'MIS CIRCUITOS'}
+        title={tab === 'routines' ? 'MIS RUTINAS' : tab === 'circuits' ? 'MIS CIRCUITOS' : 'RUTINAS DEL PLAN'}
         right={
           tab === 'routines' ? (
             <button onClick={() => navigate('/coach/create-routine')} style={{
@@ -160,7 +165,7 @@ export default function RoutinesScreen() {
               <Plus size={16} color={Colors.blackText} />
               <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.blackText }}>NUEVA</span>
             </button>
-          ) : (
+          ) : tab === 'circuits' ? (
             <button onClick={() => navigate('/coach/create-circuit')} style={{
               backgroundColor: CIRCUIT_COLOR, borderRadius: Radius.md, height: 36, paddingLeft: 14, paddingRight: 14,
               border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: Spacing.xs,
@@ -168,7 +173,7 @@ export default function RoutinesScreen() {
               <Plus size={16} color={Colors.white} />
               <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.white }}>NUEVO</span>
             </button>
-          )
+          ) : undefined
         }
       />
 
@@ -199,12 +204,24 @@ export default function RoutinesScreen() {
             <Repeat size={14} color={tab === 'circuits' ? Colors.white : Colors.gray} />
             <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, letterSpacing: 0.5, color: tab === 'circuits' ? Colors.white : Colors.gray }}>CIRCUITOS</span>
           </button>
+          <button
+            onClick={() => switchTab('plan')}
+            style={{
+              flex: 1, height: 38, borderRadius: Radius.sm, border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              backgroundColor: tab === 'plan' ? Colors.teal : 'transparent',
+              transition: 'background-color 0.15s',
+            }}
+          >
+            <CalendarRange size={14} color={tab === 'plan' ? Colors.blackText : Colors.gray} />
+            <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 11, letterSpacing: 0.3, color: tab === 'plan' ? Colors.blackText : Colors.gray }}>RUTINAS PLAN</span>
+          </button>
         </div>
       </div>
 
       <div style={{ padding: Spacing.lg, display: 'flex', flexDirection: 'column', gap: Spacing.md }}>
         {tab === 'routines' ? (
-          <>
+          <>{/* rutinas sueltas */}
             {/* Borrador en progreso */}
             {draft && (
               <div style={{ backgroundColor: Colors.orange + '15', border: `1px solid ${Colors.orange}50`, borderRadius: Radius.lg, padding: Spacing.md, display: 'flex', alignItems: 'center', gap: Spacing.md }}>
@@ -232,7 +249,7 @@ export default function RoutinesScreen() {
 
             {loadingRoutines ? (
               <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 40 }}><Spinner color={Colors.orange} size={32} /></div>
-            ) : routines.length === 0 ? (
+            ) : standaloneRoutines.length === 0 ? (
               <div style={{ backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.xl, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: Spacing.md }}>
                 <ClipboardList color={Colors.gray} size={40} />
                 <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 18, color: Colors.white }}>Sin rutinas</span>
@@ -243,7 +260,7 @@ export default function RoutinesScreen() {
                 }}>+ CREAR RUTINA</button>
               </div>
             ) : (
-              routines.map((r) => (
+              standaloneRoutines.map((r) => (
                 <div key={r.id} style={{ backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md, display: 'flex', flexDirection: 'column', gap: Spacing.sm }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: Spacing.sm, flex: 1, minWidth: 0 }}>
@@ -274,7 +291,7 @@ export default function RoutinesScreen() {
               ))
             )}
           </>
-        ) : (
+        ) : tab === 'circuits' ? (
           <>
             {loadingCircuits ? (
               <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 40 }}>
@@ -334,6 +351,52 @@ export default function RoutinesScreen() {
                   </div>
                 );
               })
+            )}
+          </>
+        ) : (
+          <>
+            {loadingRoutines ? (
+              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 40 }}><Spinner color={Colors.teal} size={32} /></div>
+            ) : planRoutines.length === 0 ? (
+              <div style={{ backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.xl, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: Spacing.md }}>
+                <CalendarRange color={Colors.gray} size={40} />
+                <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 18, color: Colors.white }}>Sin rutinas del plan</span>
+                <span style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.gray, lineHeight: 1.6 }}>Las rutinas que creás dentro de un microciclo de periodización aparecen acá.</span>
+                <button onClick={() => navigate('/coach/periodization')} style={{
+                  backgroundColor: Colors.teal, borderRadius: Radius.md, height: 44, paddingLeft: 20, paddingRight: 20,
+                  border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 13, color: Colors.blackText,
+                }}>IR AL PLAN</button>
+              </div>
+            ) : (
+              planRoutines.map((r) => (
+                <div key={r.id} style={{ backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md, display: 'flex', flexDirection: 'column', gap: Spacing.sm, borderLeft: `3px solid ${Colors.teal}50` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: Spacing.sm, flex: 1, minWidth: 0 }}>
+                      <div style={{ width: 40, height: 40, backgroundColor: Colors.bgElevated, borderRadius: Radius.md, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <CalendarRange color={Colors.teal} size={20} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 16, color: Colors.white, textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+                        <div style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray }}>{r.type} · {r.days.length} días · {r.exercises.length} ejercicios</div>
+                      </div>
+                    </div>
+                    {/* Actions */}
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      <button onClick={() => handleEditRoutine(r)} style={{ background: 'none', border: `1px solid ${Colors.bgElevated}`, borderRadius: Radius.sm, cursor: 'pointer', padding: 7, display: 'flex', alignItems: 'center' }}>
+                        <Pencil color={Colors.teal} size={16} />
+                      </button>
+                      <button onClick={() => handleDeleteRoutine(r.id)} style={{ background: 'none', border: `1px solid ${Colors.bgElevated}`, borderRadius: Radius.sm, cursor: 'pointer', padding: 7, display: 'flex', alignItems: 'center' }}>
+                        <Trash2 color={Colors.gray} size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: Spacing.xs, flexWrap: 'wrap' }}>
+                    {r.days.map((d) => (
+                      <span key={d} style={{ backgroundColor: Colors.teal + '20', border: `1px solid ${Colors.teal}40`, borderRadius: Radius.sm, padding: '2px 8px', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 10, color: Colors.teal }}>{d}</span>
+                    ))}
+                  </div>
+                </div>
+              ))
             )}
           </>
         )}

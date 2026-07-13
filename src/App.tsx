@@ -6,6 +6,8 @@ import { getUserData } from './services/auth';
 import { useAuthStore } from './store/authStore';
 import { Colors } from './theme';
 import Spinner from './components/Spinner';
+import { capturePendingInviteFromUrl, getPendingInvite, clearPendingInvite } from './store/pendingInvite';
+import { joinWithCode } from './services/connections';
 
 import LoginScreen from './screens/auth/LoginScreen';
 import RegisterScreen from './screens/auth/RegisterScreen';
@@ -49,6 +51,7 @@ import CircuitLoggingScreen from './screens/trainee/CircuitLoggingScreen';
 import SessionDetailScreen from './screens/shared/SessionDetailScreen';
 import AdminGifScreen from './screens/admin/AdminGifScreen';
 import AdminCoachesScreen from './screens/admin/AdminCoachesScreen';
+import AdminAnnouncementsScreen from './screens/admin/AdminAnnouncementsScreen';
 
 // Redirects authenticated users away from auth pages
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -102,8 +105,37 @@ function AdminCoachGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Applies a pending coach invite (captured from ?invite=CODE in the URL) as soon as
+// the logged-in user is a trainee — covers both fresh registrations and existing users
+// who log in via a coach's invite link.
+function PendingInviteHandler() {
+  const { uid, role, displayName } = useAuthStore();
+  const [attempted, setAttempted] = React.useState(false);
+
+  useEffect(() => {
+    if (attempted || !uid || role !== 'trainee') return;
+    const code = getPendingInvite();
+    if (!code) return;
+    setAttempted(true);
+    joinWithCode(code, uid, displayName ?? 'Atleta')
+      .then(({ coachName }) => {
+        clearPendingInvite();
+        alert(`¡Conectado con tu coach ${coachName}!`);
+      })
+      .catch(() => {
+        clearPendingInvite();
+      });
+  }, [uid, role, displayName, attempted]);
+
+  return null;
+}
+
 export default function App() {
   const { setUser, setRole, setAdmin, setAuthReady, clear, authReady } = useAuthStore();
+
+  useEffect(() => {
+    capturePendingInviteFromUrl();
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
@@ -130,6 +162,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <PendingInviteHandler />
       <Routes>
         {/* Auth — redirige si ya hay sesión */}
         <Route path="/login" element={<PublicRoute><LoginScreen /></PublicRoute>} />
@@ -185,6 +218,7 @@ export default function App() {
         {/* Admin */}
         <Route path="/admin/gifs" element={<AdminGuard><AdminGifScreen /></AdminGuard>} />
         <Route path="/admin/coaches" element={<AdminGuard><AdminCoachesScreen /></AdminGuard>} />
+        <Route path="/admin/announcements" element={<AdminGuard><AdminAnnouncementsScreen /></AdminGuard>} />
 
         {/* Default redirect */}
         <Route path="*" element={<RootRedirect />} />

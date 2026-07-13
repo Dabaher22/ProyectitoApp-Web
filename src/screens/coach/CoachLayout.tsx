@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, ClipboardList, User, CalendarRange, Zap } from 'lucide-react';
+import { LayoutDashboard, Users, ClipboardList, User, CalendarRange, Zap, type LucideIcon } from 'lucide-react';
 import { Colors, Fonts, Spacing, Radius } from '../../theme';
 import { dirtyGuard } from '../../store/dirtyGuard';
 import { useAuthStore } from '../../store/authStore';
 import Spinner from '../../components/Spinner';
 
-const BASE_NAV = [
+interface NavItem { to: string; label: string; icon: LucideIcon; end?: boolean }
+
+const BASE_NAV: NavItem[] = [
   { to: '/coach', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/coach/clients', label: 'Asesorados', icon: Users },
   { to: '/coach/routines', label: 'Rutinas', icon: ClipboardList },
   { to: '/coach/profile', label: 'Perfil', icon: User },
 ];
-const PLAN_ITEM = { to: '/coach/periodization', label: 'Plan', icon: CalendarRange };
+const PLAN_ITEM: NavItem = { to: '/coach/periodization', label: 'Plan', icon: CalendarRange };
 
 const SIDEBAR_WIDTH = 220;
 

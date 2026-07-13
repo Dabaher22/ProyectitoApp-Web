@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Dumbbell, PlayCircle, ChevronDown, ChevronUp, Timer, Repeat, Zap } from 'lucide-react';
+import { Dumbbell, PlayCircle, ChevronDown, ChevronUp, Timer, Repeat, Zap, Film, X } from 'lucide-react';
 import Spinner from '../../components/Spinner';
 import { Colors, Fonts, Radius, Spacing } from '../../theme';
 import { getRoutinesByTrainee, getPreviousRoutinesByTrainee, Routine } from '../../services/routines';
@@ -8,6 +8,16 @@ import { getCircuitsByTrainee, Circuit } from '../../services/circuits';
 import { useAuthStore } from '../../store/authStore';
 
 const CIRCUIT_COLOR = '#B980FF';
+
+function GifButton({ gifUrl, onView }: { gifUrl?: string; onView: () => void }) {
+  if (!gifUrl) return null;
+  return (
+    <button onClick={onView} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: 2 }}>
+      <Film color={Colors.orange} size={11} />
+      <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.orange, letterSpacing: 0.3 }}>VER GIF</span>
+    </button>
+  );
+}
 
 const MUSCLE_COLORS: Record<string, string> = {
   PECHO: '#FF6B6B', ESPALDA: '#4ECDC4', PIERNAS: '#45B7D1',
@@ -36,6 +46,7 @@ export default function RoutineScreen() {
   const [expandedRoutines, setExpandedRoutines] = useState<Set<string>>(new Set());
   const [expandedCircuits, setExpandedCircuits] = useState<Set<string>>(new Set());
   const [showPrevious, setShowPrevious] = useState(false);
+  const [viewingGif, setViewingGif] = useState<{ name: string; gifUrl: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -174,6 +185,7 @@ export default function RoutineScreen() {
                                         {!isCardio && e.muscle && (
                                           <div style={{ fontFamily: Fonts.mono, fontSize: 10, color: muscleColor, marginTop: 1 }}>{e.muscle.toUpperCase()}</div>
                                         )}
+                                        <GifButton gifUrl={e.gifUrl} onView={() => setViewingGif({ name: e.name, gifUrl: e.gifUrl! })} />
                                       </div>
                                     </div>
                                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -244,8 +256,16 @@ export default function RoutineScreen() {
                               paddingTop: Spacing.sm, paddingBottom: Spacing.sm,
                               borderBottom: i < c.exercises.length - 1 ? `1px solid ${Colors.bgElevated}` : 'none',
                             }}>
-                              <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 14, color: Colors.white }}>{e.name}</span>
-                              <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 13, color: CIRCUIT_COLOR }}>×{e.reps}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: Spacing.sm, minWidth: 0 }}>
+                                {e.type === 'cardio' && <Timer color={Colors.teal} size={13} style={{ flexShrink: 0 }} />}
+                                <div>
+                                  <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 14, color: Colors.white }}>{e.name}</span>
+                                  <GifButton gifUrl={e.gifUrl} onView={() => setViewingGif({ name: e.name, gifUrl: e.gifUrl! })} />
+                                </div>
+                              </div>
+                              <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 13, color: e.type === 'cardio' ? Colors.teal : CIRCUIT_COLOR, flexShrink: 0 }}>
+                                {e.type === 'cardio' ? `${e.durationMinutes} min` : `×${e.reps}`}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -298,6 +318,24 @@ export default function RoutineScreen() {
             </div>
           )}
         </>
+      )}
+
+      {viewingGif && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 500, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `${Spacing.md}px ${Spacing.lg}px`, paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
+            <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 15, color: Colors.white, textTransform: 'uppercase' }}>{viewingGif.name}</span>
+            <button onClick={() => setViewingGif(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
+              <X color={Colors.white} size={22} />
+            </button>
+          </div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: Spacing.lg }}>
+            {viewingGif.gifUrl.endsWith('.mp4') ? (
+              <video src={viewingGif.gifUrl} autoPlay loop muted playsInline style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: Radius.lg }} />
+            ) : (
+              <img src={viewingGif.gifUrl} alt={viewingGif.name} style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: Radius.lg, objectFit: 'contain' }} />
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

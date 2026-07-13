@@ -1,13 +1,42 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Repeat, Zap, Plus, Minus } from 'lucide-react';
+import { ArrowLeft, Repeat, Zap, Plus, Minus, Timer, Film, X } from 'lucide-react';
 import { Colors, Fonts, Radius, Spacing } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
-import { Circuit } from '../../services/circuits';
+import { Circuit, CircuitExercise } from '../../services/circuits';
 
 const CIRCUIT_COLOR = '#B980FF';
 
 type Phase = 'ready' | 'running' | 'finished';
+
+/** Groups consecutive supersetGroupId exercises together; cardio and normal entries pass through as singles. */
+function groupCircuitExercises(exercises: CircuitExercise[]): CircuitExercise[][] {
+  const groups: CircuitExercise[][] = [];
+  let i = 0;
+  while (i < exercises.length) {
+    const ex = exercises[i];
+    if (ex.supersetGroupId) {
+      let runLen = 1;
+      while (exercises[i + runLen]?.supersetGroupId === ex.supersetGroupId) runLen++;
+      groups.push(exercises.slice(i, i + runLen));
+      i += runLen;
+    } else {
+      groups.push([ex]);
+      i++;
+    }
+  }
+  return groups;
+}
+
+function GifButton({ ex, onView, size = 12 }: { ex: CircuitExercise; onView: () => void; size?: number }) {
+  if (!ex.gifUrl) return null;
+  return (
+    <button onClick={onView} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}>
+      <Film color={CIRCUIT_COLOR} size={size} />
+      <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: CIRCUIT_COLOR, letterSpacing: 0.3 }}>VER GIF</span>
+    </button>
+  );
+}
 
 export default function CircuitLoggingScreen() {
   const navigate = useNavigate();
@@ -24,6 +53,7 @@ export default function CircuitLoggingScreen() {
   const [emomMinute, setEmomMinute] = useState(0);    // EMOM: current minute (0-indexed)
   const [emomSecsInMinute, setEmomSecsInMinute] = useState(60);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [viewingGif, setViewingGif] = useState<CircuitExercise | null>(null);
   const startEpochRef = useRef<number>(0);
   const isAmrap = circuit?.format === 'amrap';
 
@@ -64,6 +94,24 @@ export default function CircuitLoggingScreen() {
   const minutes = isAmrap ? circuit.timeLimitMinutes : circuit.totalMinutes;
   const Icon = isAmrap ? Repeat : Zap;
 
+  const gifViewerModal = viewingGif && (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 500, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: `${Spacing.md}px ${Spacing.lg}px`, paddingTop: 'calc(16px + env(safe-area-inset-top))' }}>
+        <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 15, color: Colors.white, textTransform: 'uppercase' }}>{viewingGif.name}</span>
+        <button onClick={() => setViewingGif(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
+          <X color={Colors.white} size={22} />
+        </button>
+      </div>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: Spacing.lg }}>
+        {viewingGif.gifUrl?.endsWith('.mp4') ? (
+          <video src={viewingGif.gifUrl} autoPlay loop muted playsInline style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: Radius.lg }} />
+        ) : (
+          <img src={viewingGif.gifUrl} alt={viewingGif.name} style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: Radius.lg, objectFit: 'contain' }} />
+        )}
+      </div>
+    </div>
+  );
+
   /* ─── Ready screen ─────────────────────── */
   if (phase === 'ready') {
     return (
@@ -87,15 +135,39 @@ export default function CircuitLoggingScreen() {
           <div style={{ width: '100%', maxWidth: 340, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md, display: 'flex', flexDirection: 'column', gap: Spacing.sm }}>
             {isAmrap && <div style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>POR RONDA</div>}
             {!isAmrap && <div style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>ROTACIÓN DE EJERCICIOS</div>}
-            {circuit.exercises.map((e, i) => (
-              <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: Spacing.sm }}>
-                  {!isAmrap && <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: CIRCUIT_COLOR, minWidth: 50 }}>Min {i + 1}{circuit.exercises.length > 1 ? `, ${i + 1 + circuit.exercises.length}...` : ''}</span>}
-                  <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 14, color: Colors.white }}>{e.name}</span>
-                </div>
-                <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 13, color: CIRCUIT_COLOR }}>×{e.reps}</span>
-              </div>
-            ))}
+            {(() => {
+              let flatIdx = 0;
+              return groupCircuitExercises(circuit.exercises).map((group) => {
+                const startIdx = flatIdx;
+                flatIdx += group.length;
+                const isGroup = group.length > 1;
+                return (
+                  <div key={group[0].id} style={{
+                    display: 'flex', flexDirection: 'column', gap: 6,
+                    ...(isGroup ? { border: `1px solid ${CIRCUIT_COLOR}40`, borderRadius: Radius.md, padding: Spacing.sm } : {}),
+                  }}>
+                    {isGroup && (
+                      <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 9, color: CIRCUIT_COLOR, letterSpacing: 1 }}>
+                        {group.length >= 3 ? 'TRI-SERIE' : 'BI-SERIE'}
+                      </span>
+                    )}
+                    {group.map((e, memberIdx) => (
+                      <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: Spacing.sm, minWidth: 0 }}>
+                          {!isAmrap && <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: CIRCUIT_COLOR, minWidth: 50, flexShrink: 0 }}>Min {startIdx + memberIdx + 1}{circuit.exercises.length > 1 ? `, ${startIdx + memberIdx + 1 + circuit.exercises.length}...` : ''}</span>}
+                          {e.type === 'cardio' && <Timer color={Colors.teal} size={13} />}
+                          <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 14, color: Colors.white, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                          <GifButton ex={e} onView={() => setViewingGif(e)} />
+                        </div>
+                        <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 13, color: e.type === 'cardio' ? Colors.teal : CIRCUIT_COLOR, flexShrink: 0 }}>
+                          {e.type === 'cardio' ? `${e.durationMinutes} min` : `×${e.reps}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
         <div style={{ padding: Spacing.lg, paddingBottom: 'calc(24px + env(safe-area-inset-bottom))' }}>
@@ -106,6 +178,7 @@ export default function CircuitLoggingScreen() {
             INICIAR {circuit.format.toUpperCase()} →
           </button>
         </div>
+        {gifViewerModal}
       </div>
     );
   }
@@ -166,12 +239,36 @@ export default function CircuitLoggingScreen() {
         {/* Exercise list */}
         <div style={{ flex: 1, overflowY: 'auto', padding: `0 ${Spacing.lg}px` }}>
           <div style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5, marginBottom: 8 }}>POR RONDA</div>
-          {circuit.exercises.map((e, i) => (
-            <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing.sm, paddingBottom: Spacing.sm, borderBottom: i < circuit.exercises.length - 1 ? `1px solid ${Colors.bgElevated}` : 'none' }}>
-              <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 16, color: Colors.white, textTransform: 'uppercase' }}>{e.name}</span>
-              <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 18, color: CIRCUIT_COLOR }}>×{e.reps}</span>
-            </div>
-          ))}
+          {groupCircuitExercises(circuit.exercises).map((group, gi, groups) => {
+            const isGroup = group.length > 1;
+            const isLastGroup = gi === groups.length - 1;
+            return (
+              <div key={group[0].id} style={{
+                paddingTop: Spacing.sm, paddingBottom: Spacing.sm,
+                borderBottom: !isLastGroup ? `1px solid ${Colors.bgElevated}` : 'none',
+                ...(isGroup ? { border: `1px solid ${CIRCUIT_COLOR}40`, borderRadius: Radius.md, padding: Spacing.sm, marginBottom: !isLastGroup ? Spacing.sm : 0 } : {}),
+                display: 'flex', flexDirection: 'column', gap: 6,
+              }}>
+                {isGroup && (
+                  <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 9, color: CIRCUIT_COLOR, letterSpacing: 1 }}>
+                    {group.length >= 3 ? 'TRI-SERIE' : 'BI-SERIE'}
+                  </span>
+                )}
+                {group.map((e) => (
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: Spacing.sm, minWidth: 0 }}>
+                      {e.type === 'cardio' && <Timer color={Colors.teal} size={15} />}
+                      <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 16, color: Colors.white, textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+                      <GifButton ex={e} onView={() => setViewingGif(e)} />
+                    </div>
+                    <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 18, color: e.type === 'cardio' ? Colors.teal : CIRCUIT_COLOR, flexShrink: 0 }}>
+                      {e.type === 'cardio' ? `${e.durationMinutes} min` : `×${e.reps}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
 
         {/* Round counter */}
@@ -205,6 +302,7 @@ export default function CircuitLoggingScreen() {
             </div>
           </div>
         )}
+        {gifViewerModal}
       </div>
     );
   }
@@ -241,17 +339,28 @@ export default function CircuitLoggingScreen() {
         {currentEmomEx && (
           <div style={{ textAlign: 'center', backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.lg, width: '100%', maxWidth: 340, border: `1px solid ${CIRCUIT_COLOR}30` }}>
             <div style={{ fontFamily: Fonts.mono, fontSize: 10, color: CIRCUIT_COLOR, letterSpacing: 0.5, marginBottom: 8 }}>AHORA</div>
+            {currentEmomEx.type === 'cardio' && <Timer color={Colors.teal} size={18} style={{ marginBottom: 4 }} />}
             <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 24, color: Colors.white, textTransform: 'uppercase' }}>{currentEmomEx.name}</div>
-            <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 40, color: CIRCUIT_COLOR, marginTop: 8 }}>×{currentEmomEx.reps}</div>
+            <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 40, color: currentEmomEx.type === 'cardio' ? Colors.teal : CIRCUIT_COLOR, marginTop: 8 }}>
+              {currentEmomEx.type === 'cardio' ? `${currentEmomEx.durationMinutes} min` : `×${currentEmomEx.reps}`}
+            </div>
+            {currentEmomEx.gifUrl && (
+              <div style={{ marginTop: 10, display: 'flex', justifyContent: 'center' }}>
+                <GifButton ex={currentEmomEx} onView={() => setViewingGif(currentEmomEx)} size={14} />
+              </div>
+            )}
           </div>
         )}
 
         {/* Next exercise preview */}
-        {circuit.exercises.length > 1 && (
-          <div style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray }}>
-            Próximo: {circuit.exercises[(emomMinute + 1) % circuit.exercises.length]?.name} ×{circuit.exercises[(emomMinute + 1) % circuit.exercises.length]?.reps}
-          </div>
-        )}
+        {circuit.exercises.length > 1 && (() => {
+          const next = circuit.exercises[(emomMinute + 1) % circuit.exercises.length];
+          return (
+            <div style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray }}>
+              Próximo: {next?.name} {next?.type === 'cardio' ? `${next.durationMinutes} min` : `×${next?.reps}`}
+            </div>
+          );
+        })()}
 
         {/* Progress dots */}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 300 }}>
@@ -282,6 +391,7 @@ export default function CircuitLoggingScreen() {
           </div>
         </div>
       )}
+      {gifViewerModal}
     </div>
   );
 }
