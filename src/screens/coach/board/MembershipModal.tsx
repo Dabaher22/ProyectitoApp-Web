@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Check, Ban, Image as ImageIcon } from 'lucide-react';
+import { X, Check, Ban, Image as ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { Colors, Fonts, Radius, Spacing } from '../../../theme';
 import Spinner from '../../../components/Spinner';
 import MembershipBadge from '../../../components/MembershipBadge';
@@ -15,6 +15,16 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function todayInputValue(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function computeDueDate(periodStartInputValue: string, days: number): string {
+  const d = new Date(periodStartInputValue);
+  d.setDate(d.getDate() + days);
+  return d.toISOString();
+}
+
 interface Props {
   coachId: string;
   traineeId: string;
@@ -28,37 +38,93 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
   const [saving, setSaving] = useState(false);
   const [viewImage, setViewImage] = useState<string | null>(null);
 
+  // Setup (asesorado sin membresía todavía)
+  const [setupDate, setSetupDate] = useState(todayInputValue());
+
+  // Elegir desde cuándo corre el nuevo período (confirmar reporte / marcar pagado)
+  const [showMarkPaidPicker, setShowMarkPaidPicker] = useState(false);
+  const [showConfirmPicker, setShowConfirmPicker] = useState(false);
+  const [periodStart, setPeriodStart] = useState(todayInputValue());
+
+  // Rechazo con motivo
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+
+  const [showRejectedHistory, setShowRejectedHistory] = useState(false);
+
   const load = () => {
     getMembership(traineeId).then((m) => { setMembership(m); setLoading(false); });
   };
   useEffect(() => { load(); }, [traineeId]);
 
+  const closePickers = () => {
+    setShowMarkPaidPicker(false);
+    setShowConfirmPicker(false);
+    setShowRejectForm(false);
+    setRejectReason('');
+  };
+
   const handlePickPlan = async (planType: MembershipPlanType) => {
     setSaving(true);
-    try { await setMembershipPlan(coachId, traineeId, planType); load(); } finally { setSaving(false); }
+    try {
+      if (!membership) {
+        await setMembershipPlan(coachId, traineeId, planType, new Date(setupDate).toISOString());
+      } else {
+        await setMembershipPlan(coachId, traineeId, planType);
+      }
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openMarkPaidPicker = () => {
+    setPeriodStart(todayInputValue());
+    setShowMarkPaidPicker(true);
   };
 
   const handleMarkPaid = async () => {
     if (!membership) return;
-    const newDueDate = new Date(membership.nextDueDate);
-    newDueDate.setDate(newDueDate.getDate() + PLAN_DAYS[membership.planType]);
-    if (!confirm(`¿Marcar como pagado? La membresía quedará vigente hasta el ${formatDate(newDueDate.toISOString())}.`)) return;
     setSaving(true);
-    try { await markPaymentReceived(traineeId); load(); } finally { setSaving(false); }
+    try {
+      await markPaymentReceived(traineeId, new Date(periodStart).toISOString());
+      closePickers();
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openConfirmPicker = () => {
+    setPeriodStart(todayInputValue());
+    setShowConfirmPicker(true);
   };
 
   const handleConfirmReport = async () => {
     setSaving(true);
-    try { await confirmPaymentReport(traineeId); load(); } finally { setSaving(false); }
+    try {
+      await confirmPaymentReport(traineeId, new Date(periodStart).toISOString());
+      closePickers();
+      load();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleRejectReport = async () => {
-    if (!confirm('¿Rechazar este comprobante?')) return;
+    if (!rejectReason.trim()) return;
     setSaving(true);
-    try { await rejectPaymentReport(traineeId); load(); } finally { setSaving(false); }
+    try {
+      await rejectPaymentReport(traineeId, rejectReason.trim());
+      closePickers();
+      load();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const status = membership ? getMembershipStatus(membership.nextDueDate) : null;
+  const rejectedReports = membership?.rejectedReports ?? [];
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'flex-end', zIndex: 200 }}>
@@ -95,21 +161,83 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
                 {membership.pendingReport.note && (
                   <span style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.white }}>{membership.pendingReport.note}</span>
                 )}
-                <div style={{ display: 'flex', gap: Spacing.sm }}>
-                  <button onClick={handleConfirmReport} disabled={saving} style={{ flex: 1, height: 44, backgroundColor: Colors.teal, borderRadius: Radius.md, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                    <Check color={Colors.blackText} size={16} />
-                    <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.blackText }}>CONFIRMAR PAGO</span>
-                  </button>
-                  <button onClick={handleRejectReport} disabled={saving} style={{ flex: 1, height: 44, backgroundColor: Colors.bgElevated, borderRadius: Radius.md, border: `1px solid ${RED}50`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                    <Ban color={RED} size={16} />
-                    <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: RED }}>RECHAZAR</span>
-                  </button>
-                </div>
+                <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray }}>
+                  Reportado el {formatDate(membership.pendingReport.submittedAt)}
+                </span>
+
+                {showConfirmPicker ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: Spacing.sm, backgroundColor: Colors.bgElevated, borderRadius: Radius.md, padding: Spacing.sm }}>
+                    <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>INICIO DEL NUEVO PERÍODO</span>
+                    <input
+                      type="date"
+                      value={periodStart}
+                      onChange={(e) => setPeriodStart(e.target.value)}
+                      style={{ height: 40, borderRadius: Radius.sm, border: `1px solid ${Colors.bgPlaceholder}`, backgroundColor: Colors.bgPage, color: Colors.white, fontFamily: Fonts.mono, fontSize: 13, padding: '0 10px' }}
+                    />
+                    {membership && (
+                      <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.teal }}>
+                        La membresía quedará vigente hasta el {formatDate(computeDueDate(periodStart, PLAN_DAYS[membership.planType]))}.
+                      </span>
+                    )}
+                    <div style={{ display: 'flex', gap: Spacing.sm }}>
+                      <button onClick={closePickers} disabled={saving} style={{ flex: 1, height: 40, backgroundColor: Colors.bgPage, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.gray }}>
+                        CANCELAR
+                      </button>
+                      <button onClick={handleConfirmReport} disabled={saving} style={{ flex: 1, height: 40, backgroundColor: Colors.teal, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.blackText }}>
+                        {saving ? 'GUARDANDO...' : 'CONFIRMAR'}
+                      </button>
+                    </div>
+                  </div>
+                ) : showRejectForm ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: Spacing.sm, backgroundColor: Colors.bgElevated, borderRadius: Radius.md, padding: Spacing.sm }}>
+                    <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>MOTIVO DEL RECHAZO</span>
+                    <textarea
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      placeholder="Ej. No se ve el monto en la captura"
+                      rows={2}
+                      style={{ borderRadius: Radius.sm, border: `1px solid ${Colors.bgPlaceholder}`, backgroundColor: Colors.bgPage, color: Colors.white, fontFamily: Fonts.mono, fontSize: 12, padding: '8px 10px', resize: 'none', outline: 'none' }}
+                    />
+                    <div style={{ display: 'flex', gap: Spacing.sm }}>
+                      <button onClick={closePickers} disabled={saving} style={{ flex: 1, height: 40, backgroundColor: Colors.bgPage, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.gray }}>
+                        CANCELAR
+                      </button>
+                      <button onClick={handleRejectReport} disabled={saving || !rejectReason.trim()} style={{ flex: 1, height: 40, backgroundColor: RED, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.white, opacity: rejectReason.trim() ? 1 : 0.5 }}>
+                        {saving ? 'ENVIANDO...' : 'RECHAZAR'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: Spacing.sm }}>
+                    <button onClick={openConfirmPicker} disabled={saving} style={{ flex: 1, height: 44, backgroundColor: Colors.teal, borderRadius: Radius.md, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <Check color={Colors.blackText} size={16} />
+                      <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.blackText }}>CONFIRMAR PAGO</span>
+                    </button>
+                    <button onClick={() => setShowRejectForm(true)} disabled={saving} style={{ flex: 1, height: 44, backgroundColor: Colors.bgElevated, borderRadius: Radius.md, border: `1px solid ${RED}50`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <Ban color={RED} size={16} />
+                      <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: RED }}>RECHAZAR</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
             <div>
               <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, letterSpacing: 0.5 }}>PLAN</span>
+              {!membership && (
+                <div style={{ marginTop: 6, marginBottom: 6 }}>
+                  <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>FECHA DEL ÚLTIMO PAGO</span>
+                  <input
+                    type="date"
+                    value={setupDate}
+                    onChange={(e) => setSetupDate(e.target.value)}
+                    style={{ display: 'block', marginTop: 4, height: 40, borderRadius: Radius.sm, border: `1px solid ${Colors.bgPlaceholder}`, backgroundColor: Colors.bgElevated, color: Colors.white, fontFamily: Fonts.mono, fontSize: 13, padding: '0 10px' }}
+                  />
+                  <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, marginTop: 4, display: 'block' }}>
+                    Usa esta fecha si el asesorado ya lleva tiempo entrenando, para que el vencimiento quede correcto.
+                  </span>
+                </div>
+              )}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                 {PLAN_TYPES.map((p) => (
                   <button key={p} onClick={() => handlePickPlan(p)} disabled={saving} style={{
@@ -136,34 +264,93 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
               </div>
             )}
 
-            <button onClick={handleMarkPaid} disabled={saving || !membership} style={{
-              height: 48, backgroundColor: Colors.teal, borderRadius: Radius.md, border: 'none',
-              cursor: !membership ? 'default' : 'pointer', opacity: !membership ? 0.5 : 1,
-              fontFamily: Fonts.heading, fontWeight: 700, fontSize: 14, color: Colors.blackText, letterSpacing: 0.5,
-            }}>
-              {saving ? 'GUARDANDO...' : 'MARCAR COMO PAGADO'}
-            </button>
+            {showMarkPaidPicker ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: Spacing.sm, backgroundColor: Colors.bgElevated, borderRadius: Radius.md, padding: Spacing.md }}>
+                <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>INICIO DEL NUEVO PERÍODO</span>
+                <input
+                  type="date"
+                  value={periodStart}
+                  onChange={(e) => setPeriodStart(e.target.value)}
+                  style={{ height: 40, borderRadius: Radius.sm, border: `1px solid ${Colors.bgPlaceholder}`, backgroundColor: Colors.bgPage, color: Colors.white, fontFamily: Fonts.mono, fontSize: 13, padding: '0 10px' }}
+                />
+                {membership && (
+                  <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.teal }}>
+                    La membresía quedará vigente hasta el {formatDate(computeDueDate(periodStart, PLAN_DAYS[membership.planType]))}.
+                  </span>
+                )}
+                <div style={{ display: 'flex', gap: Spacing.sm }}>
+                  <button onClick={closePickers} disabled={saving} style={{ flex: 1, height: 44, backgroundColor: Colors.bgPage, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.gray }}>
+                    CANCELAR
+                  </button>
+                  <button onClick={handleMarkPaid} disabled={saving} style={{ flex: 1, height: 44, backgroundColor: Colors.teal, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.blackText }}>
+                    {saving ? 'GUARDANDO...' : 'CONFIRMAR'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={openMarkPaidPicker} disabled={saving || !membership} style={{
+                height: 48, backgroundColor: Colors.teal, borderRadius: Radius.md, border: 'none',
+                cursor: !membership ? 'default' : 'pointer', opacity: !membership ? 0.5 : 1,
+                fontFamily: Fonts.heading, fontWeight: 700, fontSize: 14, color: Colors.blackText, letterSpacing: 0.5,
+              }}>
+                MARCAR COMO PAGADO
+              </button>
+            )}
 
             {membership && membership.payments.length > 0 && (
               <div>
                 <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, letterSpacing: 0.5 }}>HISTORIAL</span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
                   {[...membership.payments].reverse().map((p) => (
-                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.bgElevated, borderRadius: Radius.sm, padding: '8px 12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {p.imageUrl && (
-                          <button onClick={() => setViewImage(p.imageUrl!)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
-                            <ImageIcon color={Colors.teal} size={14} />
-                          </button>
-                        )}
-                        <span style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.white }}>{formatDate(p.date)}</span>
+                    <div key={p.id} style={{ backgroundColor: Colors.bgElevated, borderRadius: Radius.sm, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {p.imageUrl && (
+                            <button onClick={() => setViewImage(p.imageUrl!)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
+                              <ImageIcon color={Colors.teal} size={14} />
+                            </button>
+                          )}
+                          <span style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.white }}>{formatDate(p.date)}</span>
+                        </div>
+                        <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray }}>
+                          {PLAN_LABELS[p.planType]}{p.amount ? ` · ${p.amount}` : ''}
+                        </span>
                       </div>
-                      <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray }}>
-                        {PLAN_LABELS[p.planType]}{p.amount ? ` · ${p.amount}` : ''}
-                      </span>
+                      {p.reportedAt && (
+                        <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray }}>Reportado el {formatDate(p.reportedAt)}</span>
+                      )}
+                      {p.note && (
+                        <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, fontStyle: 'italic' }}>"{p.note}"</span>
+                      )}
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {rejectedReports.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowRejectedHistory((v) => !v)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
+                  <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, letterSpacing: 0.5 }}>RECHAZOS ({rejectedReports.length})</span>
+                  {showRejectedHistory ? <ChevronUp color={Colors.gray} size={14} /> : <ChevronDown color={Colors.gray} size={14} />}
+                </button>
+                {showRejectedHistory && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+                    {[...rejectedReports].reverse().map((r) => (
+                      <div key={r.id} style={{ backgroundColor: Colors.bgElevated, borderRadius: Radius.sm, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4, opacity: 0.6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: RED }}>Rechazado el {formatDate(r.rejectedAt)}</span>
+                          <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray }}>Reportado el {formatDate(r.submittedAt)}</span>
+                        </div>
+                        <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.white }}>Motivo: {r.reason}</span>
+                        {r.note && <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, fontStyle: 'italic' }}>"{r.note}"</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </>

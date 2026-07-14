@@ -7,11 +7,12 @@ import { uploadPaymentProof, submitPaymentReport } from '../../services/membersh
 interface Props {
   traineeId: string;
   coachId: string;
+  traineeName?: string;
   onClose: () => void;
   onSubmitted: () => void;
 }
 
-export default function ReportPaymentModal({ traineeId, coachId, onClose, onSubmitted }: Props) {
+export default function ReportPaymentModal({ traineeId, coachId, traineeName, onClose, onSubmitted }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [note, setNote] = useState('');
@@ -29,7 +30,7 @@ export default function ReportPaymentModal({ traineeId, coachId, onClose, onSubm
     setSubmitting(true);
     try {
       const imageUrl = await uploadPaymentProof(traineeId, file);
-      await submitPaymentReport(traineeId, coachId, imageUrl, note.trim() || undefined);
+      await submitPaymentReport(traineeId, coachId, imageUrl, note.trim() || undefined, traineeName);
       onSubmitted();
     } catch {
       alert('No se pudo enviar el comprobante. Intenta de nuevo.');

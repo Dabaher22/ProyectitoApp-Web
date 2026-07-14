@@ -11,6 +11,15 @@ import { getFriendships, getFriendName, getFriendId } from '../../services/frien
 import { getCircuitsByTrainee, Circuit } from '../../services/circuits';
 import { useAuthStore } from '../../store/authStore';
 import AnnouncementOverlay from '../../components/announcements/AnnouncementOverlay';
+import { getMembership, getMembershipStatus, Membership } from '../../services/memberships';
+import { getConnectionByTrainee, Connection } from '../../services/connections';
+import ReportPaymentModal from './ReportPaymentModal';
+
+const RED = '#FF3B30';
+
+function formatDueDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 function getRoutineDays(routine: Routine): string[] {
   const seen = new Set<string>();
@@ -36,19 +45,26 @@ export default function TraineeDashboardScreen() {
   const [lastSession, setLastSession] = useState<WorkoutSession | null>(null);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [membership, setMembership] = useState<Membership | null>(null);
+  const [connection, setConnection] = useState<Connection | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const load = useCallback(async () => {
     if (!uid) return;
     try {
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      const [routs, mySessions, friendships, circs] = await Promise.all([
+      const [routs, mySessions, friendships, circs, memb, conn] = await Promise.all([
         getRoutinesByTrainee(uid),
         getSessionsByTrainee(uid),
         getFriendships(uid),
         getCircuitsByTrainee(uid),
+        getMembership(uid),
+        getConnectionByTrainee(uid),
       ]);
       setRoutines(routs);
       setCircuits(circs);
+      setMembership(memb);
+      setConnection(conn);
       getUnreadCount(uid, 'trainee').then(setUnreadCount);
       setLastSession(mySessions[0] ?? null);
 
@@ -116,6 +132,37 @@ export default function TraineeDashboardScreen() {
         </div>
       ) : (
         <>
+          {/* Aviso de vencimiento de membresía — nunca bloquea el acceso a rutinas */}
+          {membership && (() => {
+            const status = getMembershipStatus(membership.nextDueDate);
+            if (status === 'al_dia') return null;
+            if (membership.pendingReport) {
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md }}>
+                  <Clock color={Colors.gray} size={16} />
+                  <span style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.gray }}>Pago reportado — esperando confirmación de tu coach</span>
+                </div>
+              );
+            }
+            const color = status === 'vencido' ? RED : Colors.orange;
+            const label = status === 'vencido'
+              ? `Tu membresía venció el ${formatDueDate(membership.nextDueDate)}`
+              : `Tu membresía vence el ${formatDueDate(membership.nextDueDate)}`;
+            return (
+              <button
+                onClick={() => setShowReportModal(true)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+                  backgroundColor: color + '15', border: `1px solid ${color}50`, borderRadius: Radius.lg,
+                  padding: Spacing.md, cursor: 'pointer', textAlign: 'left', gap: Spacing.sm,
+                }}
+              >
+                <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color }}>{label}</span>
+                <span style={{ fontFamily: Fonts.mono, fontWeight: 700, fontSize: 11, color, letterSpacing: 0.5, flexShrink: 0, textDecoration: 'underline' }}>REPORTAR PAGO</span>
+              </button>
+            );
+          })()}
+
           {/* Routine */}
           {routines.length === 0 ? (
             <div style={{ backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.lg }}>
@@ -270,6 +317,16 @@ export default function TraineeDashboardScreen() {
             </div>
           )}
         </>
+      )}
+
+      {showReportModal && uid && connection && (
+        <ReportPaymentModal
+          traineeId={uid}
+          coachId={connection.coachId}
+          traineeName={displayName ?? undefined}
+          onClose={() => setShowReportModal(false)}
+          onSubmitted={() => { setShowReportModal(false); load(); }}
+        />
       )}
     </div>
   );

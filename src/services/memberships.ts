@@ -29,6 +29,10 @@ export interface MembershipPayment {
   planType: MembershipPlanType;
   amount?: number;
   imageUrl?: string;
+  /** Nota que escribió el asesorado al reportar el pago (si vino de un reporte). */
+  note?: string;
+  /** Fecha ISO en que el asesorado reportó el pago (si vino de un reporte). `date` es la fecha de confirmación. */
+  reportedAt?: string;
 }
 
 export interface PendingPaymentReport {
@@ -36,6 +40,15 @@ export interface PendingPaymentReport {
   imageUrl: string;
   note?: string;
   submittedAt: string;
+}
+
+export interface RejectedReport {
+  id: string;
+  imageUrl: string;
+  note?: string;
+  submittedAt: string;
+  rejectedAt: string;
+  reason: string;
 }
 
 export interface Membership {
@@ -46,6 +59,7 @@ export interface Membership {
   nextDueDate: string;
   payments: MembershipPayment[];
   pendingReport: PendingPaymentReport | null;
+  rejectedReports?: RejectedReport[];
   createdAt: any;
   updatedAt: any;
 }
@@ -104,10 +118,10 @@ export async function setMembershipPlan(
   await updateDoc(doc(db, 'memberships', traineeId), { planType, updatedAt: serverTimestamp() });
 }
 
-export async function markPaymentReceived(traineeId: string, amount?: number): Promise<void> {
+export async function markPaymentReceived(traineeId: string, periodStart: string, amount?: number): Promise<void> {
   const membership = await getMembership(traineeId);
   if (!membership) return;
-  const newDueDate = addDays(membership.nextDueDate, PLAN_DAYS[membership.planType]);
+  const newDueDate = addDays(periodStart, PLAN_DAYS[membership.planType]);
   const payment: MembershipPayment = {
     id: `pay_${Date.now()}_${Math.random().toString(36).slice(2)}`,
     date: new Date().toISOString(),
@@ -132,7 +146,8 @@ export async function submitPaymentReport(
   traineeId: string,
   coachId: string,
   imageUrl: string,
-  note?: string
+  note?: string,
+  traineeName?: string
 ): Promise<void> {
   const existing = await getMembership(traineeId);
   const report: PendingPaymentReport = {
@@ -143,6 +158,8 @@ export async function submitPaymentReport(
   };
 
   if (!existing) {
+    // Con el flujo nuevo la membresía se crea al conectar (ver connections.ts::joinWithCode),
+    // así que esto solo debería pasar para conexiones hechas antes de ese cambio.
     await setMembershipPlan(coachId, traineeId, 'mensual');
   }
   await updateDoc(doc(db, 'memberships', traineeId), {
@@ -150,26 +167,29 @@ export async function submitPaymentReport(
     updatedAt: serverTimestamp(),
   });
 
+  const name = traineeName ?? 'Un asesorado';
   await createNotification({
     title: 'Pago reportado',
-    body: 'Un asesorado reportó un pago y espera tu confirmación.',
+    body: `${name} reportó un pago y espera tu confirmación.`,
     type: 'coach',
     fromId: traineeId,
-    fromName: 'Asesorado',
+    fromName: name,
     recipientIds: [coachId],
     toType: 'specific',
   });
 }
 
-export async function confirmPaymentReport(traineeId: string): Promise<void> {
+export async function confirmPaymentReport(traineeId: string, periodStart: string): Promise<void> {
   const membership = await getMembership(traineeId);
   if (!membership?.pendingReport) return;
-  const newDueDate = addDays(membership.nextDueDate, PLAN_DAYS[membership.planType]);
+  const newDueDate = addDays(periodStart, PLAN_DAYS[membership.planType]);
   const payment: MembershipPayment = {
     id: `pay_${Date.now()}_${Math.random().toString(36).slice(2)}`,
     date: new Date().toISOString(),
     planType: membership.planType,
     imageUrl: membership.pendingReport.imageUrl,
+    ...(membership.pendingReport.note ? { note: membership.pendingReport.note } : {}),
+    reportedAt: membership.pendingReport.submittedAt,
   };
   await updateDoc(doc(db, 'memberships', traineeId), {
     nextDueDate: newDueDate,
@@ -179,9 +199,27 @@ export async function confirmPaymentReport(traineeId: string): Promise<void> {
   });
 }
 
-export async function rejectPaymentReport(traineeId: string): Promise<void> {
+export async function rejectPaymentReport(traineeId: string, reason: string): Promise<void> {
+  const membership = await getMembership(traineeId);
+  if (!membership?.pendingReport) return;
+  const rejected: RejectedReport = {
+    ...membership.pendingReport,
+    rejectedAt: new Date().toISOString(),
+    reason,
+  };
   await updateDoc(doc(db, 'memberships', traineeId), {
     pendingReport: null,
+    rejectedReports: [...(membership.rejectedReports ?? []), rejected],
     updatedAt: serverTimestamp(),
+  });
+
+  await createNotification({
+    title: 'Comprobante rechazado',
+    body: `Tu coach rechazó el comprobante que enviaste. Motivo: ${reason}`,
+    type: 'sistema',
+    fromId: membership.coachId,
+    fromName: 'Sistema',
+    recipientIds: [traineeId],
+    toType: 'specific',
   });
 }

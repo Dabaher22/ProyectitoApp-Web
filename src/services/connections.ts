@@ -11,6 +11,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { getMembership, setMembershipPlan, MembershipPlanType } from './memberships';
 
 export interface Connection {
   id: string;
@@ -31,7 +32,7 @@ function generateCode(): string {
   return code;
 }
 
-export async function createInvite(coachId: string, coachName: string): Promise<string> {
+export async function createInvite(coachId: string, coachName: string, planType: MembershipPlanType): Promise<string> {
   const code = generateCode();
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + 48);
@@ -39,6 +40,7 @@ export async function createInvite(coachId: string, coachName: string): Promise<
   await setDoc(doc(db, 'invites', code), {
     coachId,
     coachName,
+    planType,
     createdAt: serverTimestamp(),
     expiresAt: expiresAt.toISOString(),
   });
@@ -81,6 +83,14 @@ export async function joinWithCode(
       status: 'active',
       createdAt: serverTimestamp(),
     });
+  }
+
+  // La membresía existe desde el minuto 1 de la conexión. Si el asesorado ya tenía
+  // una (reconexión), no se pisa. Invites viejos sin planType caen a 'mensual'.
+  const existingMembership = await getMembership(traineeId);
+  if (!existingMembership) {
+    const planType: MembershipPlanType = data.planType ?? 'mensual';
+    await setMembershipPlan(data.coachId, traineeId, planType, new Date().toISOString());
   }
 
   return { coachId: data.coachId, coachName: data.coachName };

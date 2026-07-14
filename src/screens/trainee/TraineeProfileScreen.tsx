@@ -9,8 +9,14 @@ import { useAuthStore } from '../../store/authStore';
 import { signOut, saveUserRole } from '../../services/auth';
 import { joinWithCode, getConnectionByTrainee, disconnectFromCoach, Connection } from '../../services/connections';
 import { requestPushPermission, getPushPermissionStatus } from '../../services/notifications';
-import { getMembership, getMembershipStatus, Membership } from '../../services/memberships';
+import { getMembership, getMembershipStatus, PLAN_LABELS, Membership } from '../../services/memberships';
 import ReportPaymentModal from './ReportPaymentModal';
+
+const RED = '#FF3B30';
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 export default function TraineeProfileScreen() {
   const navigate = useNavigate();
@@ -92,6 +98,10 @@ export default function TraineeProfileScreen() {
       navigate('/login', { replace: true });
     }
   };
+
+  const lastPayment = membership?.payments[membership.payments.length - 1];
+  const lastRejected = membership?.rejectedReports?.[membership.rejectedReports.length - 1];
+  const showRejectionNotice = !!lastRejected && (!lastPayment || new Date(lastRejected.rejectedAt) > new Date(lastPayment.date));
 
   return (
     <div>
@@ -200,6 +210,45 @@ export default function TraineeProfileScreen() {
           )}
         </div>
 
+        {/* Mi membresía */}
+        {connection && membership && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: Spacing.sm }}>
+            <span style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 13, color: Colors.gray, letterSpacing: 2 }}>MI MEMBRESÍA</span>
+            <div style={{ backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md, display: 'flex', flexDirection: 'column', gap: Spacing.sm }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>PLAN</div>
+                  <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 15, color: Colors.white, marginTop: 2 }}>{PLAN_LABELS[membership.planType]}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>VENCE</div>
+                  <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 15, color: Colors.white, marginTop: 2 }}>{formatDate(membership.nextDueDate)}</div>
+                </div>
+              </div>
+
+              {showRejectionNotice && lastRejected && (
+                <div style={{ backgroundColor: RED + '15', border: `1px solid ${RED}40`, borderRadius: Radius.md, padding: Spacing.sm }}>
+                  <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: RED, lineHeight: 1.5 }}>
+                    Tu último comprobante fue rechazado: {lastRejected.reason}. Volvé a reportar el pago.
+                  </span>
+                </div>
+              )}
+
+              {membership.payments.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>HISTORIAL</span>
+                  {[...membership.payments].reverse().map((p) => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.bgElevated, borderRadius: Radius.sm, padding: '8px 12px' }}>
+                      <span style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.white }}>{formatDate(p.date)}</span>
+                      <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray }}>{PLAN_LABELS[p.planType]}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Coach mode options */}
         {trainingMode ? (
           <button onClick={() => { if (confirm('¿Volver al panel de coach?')) setTrainingMode(false); }} style={{
@@ -275,6 +324,7 @@ export default function TraineeProfileScreen() {
         <ReportPaymentModal
           traineeId={uid}
           coachId={connection.coachId}
+          traineeName={displayName ?? undefined}
           onClose={() => setShowReportModal(false)}
           onSubmitted={() => { setShowReportModal(false); loadMembership(); }}
         />

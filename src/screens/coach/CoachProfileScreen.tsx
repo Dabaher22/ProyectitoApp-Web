@@ -7,12 +7,17 @@ import { useAuthStore } from '../../store/authStore';
 import { signOut } from '../../services/auth';
 import { createInvite } from '../../services/connections';
 import { requestPushPermission, getPushPermissionStatus } from '../../services/notifications';
+import { PLAN_LABELS, MembershipPlanType } from '../../services/memberships';
 import Spinner from '../../components/Spinner';
+
+const PLAN_TYPES: MembershipPlanType[] = ['mensual', 'bimestral', 'trimestral', 'semestral', 'anual'];
 
 export default function CoachProfileScreen() {
   const navigate = useNavigate();
   const { uid, displayName, email, setTrainingMode, isAdmin } = useAuthStore();
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [invitePlan, setInvitePlan] = useState<MembershipPlanType | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<MembershipPlanType>('mensual');
   const [generatingCode, setGeneratingCode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -36,8 +41,9 @@ export default function CoachProfileScreen() {
     if (!uid || !displayName) return;
     setGeneratingCode(true);
     try {
-      const code = await createInvite(uid, displayName);
+      const code = await createInvite(uid, displayName, selectedPlan);
       setInviteCode(code);
+      setInvitePlan(selectedPlan);
     } catch {
       alert('No se pudo generar el código. Intenta de nuevo.');
     } finally {
@@ -97,8 +103,28 @@ export default function CoachProfileScreen() {
             <span style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.gray, lineHeight: 1.6 }}>
               Genera un código de 6 caracteres y compártelo con tu asesorado. El código es válido por 48 horas.
             </span>
+
+            <div>
+              <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>PLAN</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                {PLAN_TYPES.map((p) => (
+                  <button key={p} onClick={() => setSelectedPlan(p)} style={{
+                    padding: '6px 12px', borderRadius: Radius.full, cursor: 'pointer',
+                    backgroundColor: selectedPlan === p ? Colors.orange : Colors.bgElevated,
+                    border: 'none', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 11,
+                    color: selectedPlan === p ? Colors.blackText : Colors.gray,
+                  }}>
+                    {PLAN_LABELS[p]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {inviteCode ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: Spacing.md }}>
+                <div style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.gray, textAlign: 'center' }}>
+                  Código <span style={{ color: Colors.white, fontWeight: 700 }}>{inviteCode}</span> · Plan {invitePlan ? PLAN_LABELS[invitePlan] : ''}
+                </div>
                 <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 36, color: Colors.white, letterSpacing: 8, textAlign: 'center', backgroundColor: Colors.bgElevated, borderRadius: Radius.md, padding: Spacing.md }}>
                   {inviteCode}
                 </div>
