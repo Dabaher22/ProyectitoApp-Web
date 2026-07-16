@@ -33,6 +33,8 @@ export interface MembershipPayment {
   note?: string;
   /** Fecha ISO en que el asesorado reportó el pago (si vino de un reporte). `date` es la fecha de confirmación. */
   reportedAt?: string;
+  /** nextDueDate de la membresía justo antes de este pago — permite deshacerlo. Ausente en pagos viejos (no se pueden deshacer). */
+  previousDueDate?: string;
 }
 
 export interface PendingPaymentReport {
@@ -126,11 +128,26 @@ export async function markPaymentReceived(traineeId: string, periodStart: string
     id: `pay_${Date.now()}_${Math.random().toString(36).slice(2)}`,
     date: new Date().toISOString(),
     planType: membership.planType,
+    previousDueDate: membership.nextDueDate,
     ...(amount !== undefined ? { amount } : {}),
   };
   await updateDoc(doc(db, 'memberships', traineeId), {
     nextDueDate: newDueDate,
     payments: [...membership.payments, payment],
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Revierte el pago más reciente (por si se marcó por error): borra el registro y
+ * restaura la fecha de vencimiento anterior. Solo funciona sobre el último pago. */
+export async function undoLastPayment(traineeId: string): Promise<void> {
+  const membership = await getMembership(traineeId);
+  if (!membership || membership.payments.length === 0) return;
+  const last = membership.payments[membership.payments.length - 1];
+  if (!last.previousDueDate) return;
+  await updateDoc(doc(db, 'memberships', traineeId), {
+    nextDueDate: last.previousDueDate,
+    payments: membership.payments.slice(0, -1),
     updatedAt: serverTimestamp(),
   });
 }
@@ -188,6 +205,7 @@ export async function confirmPaymentReport(traineeId: string, periodStart: strin
     date: new Date().toISOString(),
     planType: membership.planType,
     imageUrl: membership.pendingReport.imageUrl,
+    previousDueDate: membership.nextDueDate,
     ...(membership.pendingReport.note ? { note: membership.pendingReport.note } : {}),
     reportedAt: membership.pendingReport.submittedAt,
   };

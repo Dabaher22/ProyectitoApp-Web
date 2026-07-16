@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { X, Check, Ban, Image as ImageIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Check, Ban, Image as ImageIcon, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
 import { Colors, Fonts, Radius, Spacing } from '../../../theme';
 import Spinner from '../../../components/Spinner';
 import MembershipBadge from '../../../components/MembershipBadge';
 import {
-  getMembership, setMembershipPlan, markPaymentReceived, confirmPaymentReport, rejectPaymentReport,
+  getMembership, setMembershipPlan, markPaymentReceived, confirmPaymentReport, rejectPaymentReport, undoLastPayment,
   getMembershipStatus, PLAN_LABELS, PLAN_DAYS, Membership, MembershipPlanType,
 } from '../../../services/memberships';
 
@@ -123,8 +123,20 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
     }
   };
 
+  const handleUndoLastPayment = async () => {
+    if (!confirm('¿Deshacer el último pago registrado? Se borra ese registro y la membresía vuelve a la fecha de vencimiento anterior.')) return;
+    setSaving(true);
+    try {
+      await undoLastPayment(traineeId);
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const status = membership ? getMembershipStatus(membership.nextDueDate) : null;
   const rejectedReports = membership?.rejectedReports ?? [];
+  const lastPayment = membership?.payments[membership.payments.length - 1];
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'flex-end', zIndex: 200 }}>
@@ -301,29 +313,38 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
               <div>
                 <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, letterSpacing: 0.5 }}>HISTORIAL</span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-                  {[...membership.payments].reverse().map((p) => (
-                    <div key={p.id} style={{ backgroundColor: Colors.bgElevated, borderRadius: Radius.sm, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          {p.imageUrl && (
-                            <button onClick={() => setViewImage(p.imageUrl!)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
-                              <ImageIcon color={Colors.teal} size={14} />
-                            </button>
-                          )}
-                          <span style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.white }}>{formatDate(p.date)}</span>
+                  {[...membership.payments].reverse().map((p) => {
+                    const isLast = p.id === lastPayment?.id;
+                    return (
+                      <div key={p.id} style={{ backgroundColor: Colors.bgElevated, borderRadius: Radius.sm, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {p.imageUrl && (
+                              <button onClick={() => setViewImage(p.imageUrl!)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
+                                <ImageIcon color={Colors.teal} size={14} />
+                              </button>
+                            )}
+                            <span style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.white }}>{formatDate(p.date)}</span>
+                          </div>
+                          <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray }}>
+                            {PLAN_LABELS[p.planType]}{p.amount ? ` · ${p.amount}` : ''}
+                          </span>
                         </div>
-                        <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray }}>
-                          {PLAN_LABELS[p.planType]}{p.amount ? ` · ${p.amount}` : ''}
-                        </span>
+                        {p.reportedAt && (
+                          <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray }}>Reportado el {formatDate(p.reportedAt)}</span>
+                        )}
+                        {p.note && (
+                          <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, fontStyle: 'italic' }}>"{p.note}"</span>
+                        )}
+                        {isLast && p.previousDueDate && (
+                          <button onClick={handleUndoLastPayment} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: 2 }}>
+                            <Undo2 color={Colors.orange} size={12} />
+                            <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.orange }}>DESHACER (¿fue un error?)</span>
+                          </button>
+                        )}
                       </div>
-                      {p.reportedAt && (
-                        <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray }}>Reportado el {formatDate(p.reportedAt)}</span>
-                      )}
-                      {p.note && (
-                        <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, fontStyle: 'italic' }}>"{p.note}"</span>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
