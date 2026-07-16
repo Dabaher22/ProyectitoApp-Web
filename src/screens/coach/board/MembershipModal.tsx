@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Check, Ban, Image as ImageIcon, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
+import { X, Check, Ban, Image as ImageIcon, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
 import { Colors, Fonts, Radius, Spacing } from '../../../theme';
 import Spinner from '../../../components/Spinner';
 import MembershipBadge from '../../../components/MembershipBadge';
@@ -10,6 +10,7 @@ import {
 
 const RED = '#FF3B30';
 const PLAN_TYPES: MembershipPlanType[] = ['mensual', 'bimestral', 'trimestral', 'semestral', 'anual'];
+const UNDO_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -19,8 +20,16 @@ function todayInputValue(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function computeDueDate(periodStartInputValue: string, days: number): string {
-  const d = new Date(periodStartInputValue);
+/** Parses a <input type="date"> value to ISO, or null while it's empty/incomplete mid-edit. */
+function toIsoOrNull(dateInputValue: string): string | null {
+  const d = new Date(dateInputValue);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function computeDueDate(periodStartInputValue: string, days: number): string | null {
+  const startIso = toIsoOrNull(periodStartInputValue);
+  if (!startIso) return null;
+  const d = new Date(startIso);
   d.setDate(d.getDate() + days);
   return d.toISOString();
 }
@@ -68,7 +77,8 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
     setSaving(true);
     try {
       if (!membership) {
-        await setMembershipPlan(coachId, traineeId, planType, new Date(setupDate).toISOString());
+        const startIso = toIsoOrNull(setupDate) ?? new Date().toISOString();
+        await setMembershipPlan(coachId, traineeId, planType, startIso);
       } else {
         await setMembershipPlan(coachId, traineeId, planType);
       }
@@ -84,10 +94,11 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
   };
 
   const handleMarkPaid = async () => {
-    if (!membership) return;
+    const startIso = toIsoOrNull(periodStart);
+    if (!membership || !startIso) return;
     setSaving(true);
     try {
-      await markPaymentReceived(traineeId, new Date(periodStart).toISOString());
+      await markPaymentReceived(traineeId, startIso);
       closePickers();
       load();
     } finally {
@@ -101,9 +112,11 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
   };
 
   const handleConfirmReport = async () => {
+    const startIso = toIsoOrNull(periodStart);
+    if (!startIso) return;
     setSaving(true);
     try {
-      await confirmPaymentReport(traineeId, new Date(periodStart).toISOString());
+      await confirmPaymentReport(traineeId, startIso);
       closePickers();
       load();
     } finally {
@@ -186,16 +199,21 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
                       onChange={(e) => setPeriodStart(e.target.value)}
                       style={{ height: 40, borderRadius: Radius.sm, border: `1px solid ${Colors.bgPlaceholder}`, backgroundColor: Colors.bgPage, color: Colors.white, fontFamily: Fonts.mono, fontSize: 13, padding: '0 10px' }}
                     />
-                    {membership && (
-                      <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.teal }}>
-                        La membresía quedará vigente hasta el {formatDate(computeDueDate(periodStart, PLAN_DAYS[membership.planType]))}.
-                      </span>
-                    )}
+                    {membership && (() => {
+                      const due = computeDueDate(periodStart, PLAN_DAYS[membership.planType]);
+                      return due ? (
+                        <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.teal }}>
+                          La membresía quedará vigente hasta el {formatDate(due)}.
+                        </span>
+                      ) : (
+                        <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray }}>Elegí una fecha válida.</span>
+                      );
+                    })()}
                     <div style={{ display: 'flex', gap: Spacing.sm }}>
                       <button onClick={closePickers} disabled={saving} style={{ flex: 1, height: 40, backgroundColor: Colors.bgPage, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.gray }}>
                         CANCELAR
                       </button>
-                      <button onClick={handleConfirmReport} disabled={saving} style={{ flex: 1, height: 40, backgroundColor: Colors.teal, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.blackText }}>
+                      <button onClick={handleConfirmReport} disabled={saving || !toIsoOrNull(periodStart)} style={{ flex: 1, height: 40, backgroundColor: Colors.teal, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.blackText, opacity: toIsoOrNull(periodStart) ? 1 : 0.5 }}>
                         {saving ? 'GUARDANDO...' : 'CONFIRMAR'}
                       </button>
                     </div>
@@ -285,16 +303,21 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
                   onChange={(e) => setPeriodStart(e.target.value)}
                   style={{ height: 40, borderRadius: Radius.sm, border: `1px solid ${Colors.bgPlaceholder}`, backgroundColor: Colors.bgPage, color: Colors.white, fontFamily: Fonts.mono, fontSize: 13, padding: '0 10px' }}
                 />
-                {membership && (
-                  <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.teal }}>
-                    La membresía quedará vigente hasta el {formatDate(computeDueDate(periodStart, PLAN_DAYS[membership.planType]))}.
-                  </span>
-                )}
+                {membership && (() => {
+                  const due = computeDueDate(periodStart, PLAN_DAYS[membership.planType]);
+                  return due ? (
+                    <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.teal }}>
+                      La membresía quedará vigente hasta el {formatDate(due)}.
+                    </span>
+                  ) : (
+                    <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray }}>Elegí una fecha válida.</span>
+                  );
+                })()}
                 <div style={{ display: 'flex', gap: Spacing.sm }}>
                   <button onClick={closePickers} disabled={saving} style={{ flex: 1, height: 44, backgroundColor: Colors.bgPage, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.gray }}>
                     CANCELAR
                   </button>
-                  <button onClick={handleMarkPaid} disabled={saving} style={{ flex: 1, height: 44, backgroundColor: Colors.teal, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.blackText }}>
+                  <button onClick={handleMarkPaid} disabled={saving || !toIsoOrNull(periodStart)} style={{ flex: 1, height: 44, backgroundColor: Colors.teal, borderRadius: Radius.md, border: 'none', cursor: 'pointer', fontFamily: Fonts.mono, fontWeight: 700, fontSize: 12, color: Colors.blackText, opacity: toIsoOrNull(periodStart) ? 1 : 0.5 }}>
                     {saving ? 'GUARDANDO...' : 'CONFIRMAR'}
                   </button>
                 </div>
@@ -315,10 +338,17 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
                   {[...membership.payments].reverse().map((p) => {
                     const isLast = p.id === lastPayment?.id;
+                    const withinUndoWindow = Date.now() - new Date(p.date).getTime() < UNDO_WINDOW_MS;
+                    const canUndo = isLast && !!p.previousDueDate && withinUndoWindow;
                     return (
                       <div key={p.id} style={{ backgroundColor: Colors.bgElevated, borderRadius: Radius.sm, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {canUndo && (
+                              <button onClick={handleUndoLastPayment} disabled={saving} title="Deshacer este pago" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
+                                <ArrowLeft color={Colors.orange} size={14} />
+                              </button>
+                            )}
                             {p.imageUrl && (
                               <button onClick={() => setViewImage(p.imageUrl!)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
                                 <ImageIcon color={Colors.teal} size={14} />
@@ -335,12 +365,6 @@ export default function MembershipModal({ coachId, traineeId, traineeName, onClo
                         )}
                         {p.note && (
                           <span style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, fontStyle: 'italic' }}>"{p.note}"</span>
-                        )}
-                        {isLast && p.previousDueDate && (
-                          <button onClick={handleUndoLastPayment} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: 4, alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: 2 }}>
-                            <Undo2 color={Colors.orange} size={12} />
-                            <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.orange }}>DESHACER (¿fue un error?)</span>
-                          </button>
                         )}
                       </div>
                     );
