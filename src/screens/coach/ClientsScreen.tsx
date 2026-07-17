@@ -4,7 +4,7 @@ import { Users, CheckCircle2, Clock, AlertTriangle, CreditCard, Send } from 'luc
 import ScreenHeader from '../../components/ScreenHeader';
 import Spinner from '../../components/Spinner';
 import { Colors, Fonts, Radius, Spacing } from '../../theme';
-import { getConnectionsByCoach, getMembershipDays, Connection } from '../../services/connections';
+import { getConnectionsByCoach, Connection } from '../../services/connections';
 import { getMembershipsByCoach, getMembershipStatus, Membership, MembershipStatus } from '../../services/memberships';
 import { useAuthStore } from '../../store/authStore';
 import MembershipModal from './board/MembershipModal';
@@ -157,10 +157,11 @@ export default function ClientsScreen() {
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontFamily: Fonts.heading, fontWeight: 700, fontSize: 17, color: Colors.white, textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.traineeName}</div>
-                            <div style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.gray, marginTop: 2 }}>
-                              {getMembershipDays(c.createdAt)} días de membresía
-                              {m && <> · Vence {formatDueDate(m.nextDueDate)}</>}
-                            </div>
+                            {m && (
+                              <div style={{ fontFamily: Fonts.mono, fontSize: 12, color: Colors.gray, marginTop: 2 }}>
+                                Vence {formatDueDate(m.nextDueDate)}
+                              </div>
+                            )}
                           </div>
                           <MembershipButton status={status} onClick={() => setMembershipTarget({ id: c.traineeId, name: c.traineeName })} />
                         </div>
