@@ -106,6 +106,9 @@ export default function CoachProfileScreen() {
 
             <div>
               <span style={{ fontFamily: Fonts.mono, fontSize: 10, color: Colors.gray, letterSpacing: 0.5 }}>PLAN</span>
+              <div style={{ fontFamily: Fonts.mono, fontSize: 11, color: Colors.gray, lineHeight: 1.5, marginTop: 4 }}>
+                Elegí el plan de membresía para este código: el asesorado que se una con él va a quedar configurado automáticamente con ese plan.
+              </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                 {PLAN_TYPES.map((p) => (
                   <button key={p} onClick={() => setSelectedPlan(p)} style={{
